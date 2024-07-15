@@ -1,0 +1,111 @@
+---
+title: "02_cor_viz"
+author: "Puvvula"
+date: "2024-06-25"
+output: pdf_document
+---
+
+#formatting
+```{r}
+cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
+  mutate(
+    ucsc_ref_gene_name = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_name), ";"), function(x) paste(unique(x), collapse = "; ")),
+    ucsc_ref_gene_group = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_group), ";"), function(x) paste(unique(x), collapse = "; "))
+  ) |>
+  filter(!is.na(p_value) & p_value != "",  !is.na(cor) & cor != "") 
+
+
+|>
+  filter(!is.na(ucsc_ref_gene_name) & ucsc_ref_gene_name != "") |>
+  filter(cor < -0.75 | cor > 0.75, as.numeric(p_value) < 0.05) |>
+  filter(str_detect(ucsc_ref_gene_group, "TSS"))
+```
+
+#summary table
+```{r}
+summary <- cor_viz |>
+  mutate(p_value_group = ifelse(p_value < 0.05 , "< 0.05", "> 0.05"),
+         cor_group = case_when(
+           cor <= -0.8 ~ "<= -0.8",
+           cor > -0.8 & cor <= -0.6 ~ "> -0.8 & <= -0.6",
+           cor > -0.6 & cor <= -0.4 ~ "> -0.6 & <= -0.4",
+           cor > -0.4 & cor <= -0.2 ~ "> -0.4 & <= -0.2",
+           cor > -0.2 & cor < 0 ~ "> -0.2 & < 0",
+           cor == 0 ~ "0",
+           cor > 0 & cor <= 0.2 ~ "> 0 & <= 0.2",
+           cor > 0.2 & cor <= 0.4 ~ "> 0.2 & <= 0.4",
+           cor > 0.4 & cor <= 0.6 ~ "> 0.4 & <= 0.6",
+           cor > 0.6 & cor <= 0.8 ~ "> 0.6 & <= 0.8",
+           cor > 0.8 ~ "> 0.8"
+         )) |>
+  group_by(concord, p_value_group, cor_group) |>
+  summarise(
+    count_cpg_sites = n(),
+    count_genes = n_distinct(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]),
+    cross_listed_genes = sum(sapply(str_split(ucsc_ref_gene_name, ";"), function(x) length(unique(x)) > 1 && length(unique(x)) == length(x))),
+    
+    genes_list = paste(unique(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]), collapse = ";"),
+    count_Promotor = sum(str_detect(ucsc_ref_gene_group, "TSS")),
+    count_Gene_Body = sum(str_detect(ucsc_ref_gene_group, "Body")),
+    chr_counts = paste(paste0(chr, " (", table(chr), ")"), collapse = "; "),
+    chr_tss_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))), ")") %>% paste(collapse = "; "),
+    chr_body_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))), ")") %>% paste(collapse = "; "),
+    chr_5UTR_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR"))), ")") %>% paste(collapse = "; "),
+    chr_3UTR_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))), ")") %>% paste(collapse = "; "),
+    
+    
+    chr_cross_listed = paste0(unique(chr), " (", sapply(unique(chr), function(x) paste(
+      c(
+        if (sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS")) > 0) paste0("TSS: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))),
+        if (sum(chr == x & str_detect(ucsc_ref_gene_group, "Body")) > 0) paste0("Body: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))),
+        if (sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR")) > 0) paste0("3UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))),
+        if (sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")) > 0) paste0("5UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")))
+      ),
+      collapse = ", "
+    )), ")") %>% paste(collapse = "; "),
+    
+    
+    cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3UTR") + str_detect(ucsc_ref_gene_group, "5UTR") > 1)
+  )
+
+write_csv(summary,
+          file="~/Documents/methyl_concor/result/concordance_summary.csv")
+```
+
+
+#scatter plot
+```{r}
+ggplot(cor_viz,
+       aes(x = p_value, y= cor))+
+  geom_point()+
+  theme_minimal()+
+  facet_grid(~concord)
+```
+
+#correlation heatmap - subset
+```{r}
+ggplot(cor_viz, aes(x = factor(concord), 
+                    y = cpg_site, fill = cor)) + #, label = value
+  geom_tile(color = "white") +
+  #geom_text(color = "black", size = 3, vjust = 1) +
+  scale_fill_gradient2(low = "red", high = "royalblue", mid = "white",
+                       midpoint = 0,
+                       limit = c(-1, 1), space = "Lab",
+                       name = "Spearman Correlation coefficient") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, size = 11, hjust = 1),
+        axis.text.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = "bottom", legend.box = "horizontal") +
+  facet_grid(.~chr)
+```
+
+
+
+
+

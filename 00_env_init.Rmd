@@ -1,0 +1,17 @@
+---
+title: "00_env_init"
+author: "Puvvula"
+date: "2024-06-20"
+output: pdf_document
+---
+
+```{r}
+library(pacman)
+pacman::p_load(tidyverse, reshape2, foreach, doParallel, purrr, data.table)
+```
+
+#folder
+```{r}
+input <- "~/Documents/methyl_concor/input"
+```
+

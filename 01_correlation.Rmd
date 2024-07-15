@@ -1,0 +1,165 @@
+---
+title: "01_correlation"
+author: "Puvvula"
+date: "2024-06-20"
+output: pdf_document
+---
+
+#reference index for methylation data
+```{r}
+ref_indx<- read_csv(paste0(input, "/index_methylation.csv")) |>
+  mutate(participant_id = str_extract(pt_id, "participant \\w+") |> 
+           str_extract("\\w+$")) |>
+  select(-c(pt_id))
+```
+
+
+#read methylation data
+```{r}
+#CBMC
+load("~/Documents/methylation_pilot/processed/cbmc_processed.rda")
+
+cbmc<- data.frame(cpg_site = row.names(bVals) , bVals) |>
+  as_tibble() |>
+  pivot_longer(cols=starts_with("X"),
+               names_to = "id",
+               values_to = "methylation_intensity") |>
+  mutate(smpl = "cbmc")
+
+#MP
+load("~/Documents/methylation_pilot/processed/mp_ref_cell_cnt/mp_processed.rda")
+rm(mp_pheno, mVals)
+
+mp<- data.frame(cpg_site = row.names(bVals) , bVals) |>
+  as_tibble() |>
+  pivot_longer(cols=starts_with("X"),
+               names_to = "id",
+               values_to = "methylation_intensity")|>
+  mutate(smpl = "mp")
+
+#FP
+load("~/Documents/methylation_pilot/processed/fp_ref_cell_cnt/fp_processed.rda")
+fp<- data.frame(cpg_site = row.names(bVals) , bVals) |>
+  as_tibble() |>
+  pivot_longer(cols=starts_with("X"),
+               names_to = "id",
+               values_to = "methylation_intensity")|>
+  mutate(smpl = "fp")
+```
+
+#join all methylation data
+```{r}
+all_methylation<- bind_rows(cbmc, fp, mp) |>
+  mutate(variable = paste(substr(id, 2, nchar(id)), smpl, sep="_")) |>
+  left_join(ref_indx, by = "variable") |>
+  select(-c(id))
+
+save(all_methylation, file = paste0(input, "/methylation.Rds"))
+```
+
+################################################################################
+#load formatted dataset
+################################################################################
+```{r}
+load(paste0(input, "/methylation.Rds"))
+```
+
+#formatting
+```{r}
+
+dat_cor <- as.data.table(all_methylation)[, .(
+  avg_methylation_intensity = mean(as.numeric(methylation_intensity), na.rm = TRUE)
+), by = .(cpg_site, smpl, participant_id)]
+
+dat_cor <- dcast(dat_cor, cpg_site + participant_id ~ smpl, value.var = "avg_methylation_intensity")
+```
+
+# Split data by cpg_site
+```{r}
+split_data <- split(dat_cor, by = "cpg_site")
+```
+
+#Set-up for correlations in parallel
+```{r}
+cor_test <- function(x, y) {
+  # Remove rows where either x or y is NA or infinite
+  valid <- !is.na(x) & !is.na(y) & is.finite(x) & is.finite(y)
+  x <- x[valid]
+  y <- y[valid]
+  
+  # Check if we have enough observations
+  if(length(x) < 3 || length(y) < 3) {
+    return(c(cor = NA, p_value = NA))
+  }
+  
+  # Perform the correlation test
+  tryCatch({
+    test <- cor.test(x, y, method = "spearman")
+    c(cor = unname(test$estimate), p_value = test$p.value)
+  }, error = function(e) {
+    c(cor = NA, p_value = NA)
+  })
+}
+
+# Set up parallel processing
+num_cores <- detectCores() - 1  # Use all but one core
+cl <- makeCluster(num_cores)
+
+# Export the cor_test function to all worker nodes
+clusterExport(cl, "cor_test")
+```
+
+# Parallel computation of correlations
+```{r}
+results <- parLapply(cl, split_data, function(sub_dt) {
+  cor_test(x=sub_dt$fp, 
+           y=sub_dt$mp)
+})
+
+# Stop cluster
+stopCluster(cl)
+
+# Combine results
+final_results <- data.table(
+  cpg_site = names(results),
+  cor = sapply(results, `[`, 1),
+  p_value = sapply(results, `[`, 2)
+)
+
+final_results[, p_value := formatC(p_value, format = "e", digits = 2)]
+```
+
+#formatting results
+```{r}
+cbmc_fp<- final_results |>
+  mutate(concord = "cbmc_fp")
+
+cbmc_mp<- final_results |>
+  mutate(concord = "cbmc_mp")
+
+fp_mp<- final_results |>
+  mutate(concord = "fp_mp")
+
+#final results
+combined_data <- bind_rows(cbmc_fp, cbmc_mp, fp_mp)
+```
+
+#methylation annotation
+```{r}
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19) |> 
+  as.data.frame() |>
+  select(c("UCSC_RefGene_Name","UCSC_RefGene_Group","Relation_to_Island","chr","pos")) |>
+  rownames_to_column(var = "cpg_site") |>
+  clean_names()
+```
+
+#join correlation coefs with annotations
+```{r}
+corr_anno_df<- combined_data |> left_join(ann450k, by = "cpg_site")
+
+saveRDS(corr_anno_df, 
+        file = "~/Documents/methyl_concor/result/methyl_conc_results.rds")
+```
+
+
