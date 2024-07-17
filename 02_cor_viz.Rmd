@@ -24,6 +24,7 @@ cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
 #summary table
 ```{r}
 summary <- cor_viz |>
+  filter(p_value < 0.05) |>
   mutate(p_value_group = ifelse(p_value < 0.05 , "< 0.05", "> 0.05"),
          cor_group = case_when(
            cor <= -0.8 ~ "<= -0.8",
@@ -45,13 +46,13 @@ summary <- cor_viz |>
     cross_listed_genes = sum(sapply(str_split(ucsc_ref_gene_name, ";"), function(x) length(unique(x)) > 1 && length(unique(x)) == length(x))),
     
     genes_list = paste(unique(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]), collapse = ";"),
-    count_Promotor = sum(str_detect(ucsc_ref_gene_group, "TSS")),
-    count_Gene_Body = sum(str_detect(ucsc_ref_gene_group, "Body")),
-    chr_counts = paste(paste0(chr, " (", table(chr), ")"), collapse = "; "),
-    chr_tss_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))), ")") %>% paste(collapse = "; "),
-    chr_body_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))), ")") %>% paste(collapse = "; "),
-    chr_5UTR_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR"))), ")") %>% paste(collapse = "; "),
-    chr_3UTR_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))), ")") %>% paste(collapse = "; "),
+    #count_Promotor = sum(str_detect(ucsc_ref_gene_group, "TSS")),
+    #count_Gene_Body = sum(str_detect(ucsc_ref_gene_group, "Body")),
+    #chr_counts = paste(paste0(chr, " (", table(chr), ")"), collapse = "; "),
+    #chr_tss_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))), ")") %>% paste(collapse = "; "),
+    #chr_body_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))), ")") %>% paste(collapse = "; "),
+    #chr_5UTR_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR"))), ")") %>% paste(collapse = "; "),
+    #chr_3UTR_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))), ")") %>% paste(collapse = "; "),
     
     
     chr_cross_listed = paste0(unique(chr), " (", sapply(unique(chr), function(x) paste(
@@ -65,7 +66,7 @@ summary <- cor_viz |>
     )), ")") %>% paste(collapse = "; "),
     
     
-    cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3UTR") + str_detect(ucsc_ref_gene_group, "5UTR") > 1)
+    cpg_cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3UTR") + str_detect(ucsc_ref_gene_group, "5UTR") > 1)
   )
 
 write_csv(summary,
