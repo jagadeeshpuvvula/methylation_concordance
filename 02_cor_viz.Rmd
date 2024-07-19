@@ -21,6 +21,24 @@ cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
   filter(str_detect(ucsc_ref_gene_group, "TSS"))
 ```
 
+#formatting for summary table
+```{r}
+# Ensure the 'chr' variable is in the correct order
+chr_levels <- paste0("chr", 1:22) # Add more levels if needed, e.g., for chrX, chrY
+
+# Function to get the counts for each category
+get_chr_counts <- function(chr_name) {
+  counts <- c(
+    if (sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "TSS")) > 0) paste0("TSS: ", sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "TSS"))),
+    if (sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "Body")) > 0) paste0("Body: ", sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "Body"))),
+    if (sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "3'UTR")) > 0) paste0("3UTR: ", sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "3'UTR"))),
+    if (sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "5'UTR")) > 0) paste0("5UTR: ", sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "5'UTR")))
+  )
+  paste(counts, collapse = ", ")
+}
+```
+
+
 #summary table
 ```{r}
 summary <- cor_viz |>
@@ -66,7 +84,7 @@ summary <- cor_viz |>
     )), ")") %>% paste(collapse = "; "),
     
     
-    cpg_cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3UTR") + str_detect(ucsc_ref_gene_group, "5UTR") > 1)
+    cpg_cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3'UTR") + str_detect(ucsc_ref_gene_group, "5'UTR") > 1)
   )
 
 write_csv(summary,
@@ -107,6 +125,49 @@ ggplot(cor_viz, aes(x = factor(concord),
 ```
 
 
+#updated table for manuscript
+```{r}
+summary <- cor_viz |>
+  filter(p_value < 0.05) |>
+  mutate(p_value_group = ifelse(p_value < 0.05 , "< 0.05", "> 0.05"),
+         cor_group = case_when(
+           cor <= -0.8 ~ "<= -0.8",
+           cor > -0.8 & cor <= -0.6 ~ "> -0.8 & <= -0.6",
+           cor > -0.6 & cor <= -0.4 ~ "> -0.6 & <= -0.4",
+           cor > -0.4 & cor <= -0.2 ~ "> -0.4 & <= -0.2",
+           cor > -0.2 & cor < 0 ~ "> -0.2 & < 0",
+           cor == 0 ~ "0",
+           cor > 0 & cor <= 0.2 ~ "> 0 & <= 0.2",
+           cor > 0.2 & cor <= 0.4 ~ "> 0.2 & <= 0.4",
+           cor > 0.4 & cor <= 0.6 ~ "> 0.4 & <= 0.6",
+           cor > 0.6 & cor <= 0.8 ~ "> 0.6 & <= 0.8",
+           cor > 0.8 ~ "> 0.8"
+         )) |>
+  group_by(concord, p_value_group, cor_group) |>
+  summarise(
+    count_cpg_sites = n(),
+    count_genes = n_distinct(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]),
+    cross_listed_genes = sum(sapply(str_split(ucsc_ref_gene_name, ";"), function(x) length(unique(x)) > 1 && length(unique(x)) == length(x))),
+    chr_cross_listed = paste0(
+      unique(chr) %>% factor(levels = chr_levels) %>% sort() %>% as.character(),
+      " (",
+      sapply(unique(chr) %>% factor(levels = chr_levels) %>% sort() %>% as.character(), function(x) paste(
+        c(
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS")) > 0) paste0("TSS: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))),
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "Body")) > 0) paste0("Body: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))),
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR")) > 0) paste0("3UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))),
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")) > 0) paste0("5UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")))
+        ),
+        collapse = ", "
+      )),
+      ")"
+    ) %>% paste(collapse = "; "),
+    cpg_cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3'UTR") + str_detect(ucsc_ref_gene_group, "5'UTR") > 1)
+  )
+
+write_csv(summary,
+          file="~/Documents/methyl_concor/result/concordance_summary_jul19.csv")
+```
 
 
 
