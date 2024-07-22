@@ -21,6 +21,13 @@ cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
   filter(str_detect(ucsc_ref_gene_group, "TSS"))
 ```
 
+#export full results for supplement table
+```{r}
+write.table(cor_viz, "~/Documents/methyl_concor/result/methylation_suppl.txt", 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+
 #formatting for summary table
 ```{r}
 # Ensure the 'chr' variable is in the correct order
@@ -151,5 +158,23 @@ write_csv(summary,
           file="~/Documents/methyl_concor/result/concordance_summary_jul19.csv")
 ```
 
+#summary for manuscript
+```{r}
+cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
+  mutate(
+    ucsc_ref_gene_name = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_name), ";"), function(x) paste(unique(x), collapse = "; ")),
+    ucsc_ref_gene_group = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_group), ";"), function(x) paste(unique(x), collapse = "; "))
+  ) |>
+  filter(!is.na(p_value) & p_value != "",  !is.na(cor) & cor != "")  |>
+  filter(p_value < 0.05 & cor >0.5)
+
+cpg_sites_all_levels <- cor_viz %>%
+  group_by(cpg_site) %>%
+  summarise(levels_present = n_distinct(concord)) %>%
+  filter(levels_present == 3) %>%
+  pull(cpg_site)
+
+cpg_sites_list <- paste(cpg_sites_all_levels, collapse = ", ")
+```
 
 
