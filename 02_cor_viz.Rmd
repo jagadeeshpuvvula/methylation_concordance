@@ -25,17 +25,6 @@ cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
 ```{r}
 # Ensure the 'chr' variable is in the correct order
 chr_levels <- paste0("chr", 1:22) # Add more levels if needed, e.g., for chrX, chrY
-
-# Function to get the counts for each category
-get_chr_counts <- function(chr_name) {
-  counts <- c(
-    if (sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "TSS")) > 0) paste0("TSS: ", sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "TSS"))),
-    if (sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "Body")) > 0) paste0("Body: ", sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "Body"))),
-    if (sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "3'UTR")) > 0) paste0("3UTR: ", sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "3'UTR"))),
-    if (sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "5'UTR")) > 0) paste0("5UTR: ", sum(chr == chr_name & str_detect(ucsc_ref_gene_group, "5'UTR")))
-  )
-  paste(counts, collapse = ", ")
-}
 ```
 
 
@@ -57,22 +46,15 @@ summary <- cor_viz |>
            cor > 0.6 & cor <= 0.8 ~ "> 0.6 & <= 0.8",
            cor > 0.8 ~ "> 0.8"
          )) |>
-  group_by(concord, p_value_group, cor_group) |>
+  group_by(concord, p_value_group, cor_group, chr) |>
   summarise(
     count_cpg_sites = n(),
-    count_genes = n_distinct(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]),
+    count_genes = n_distinct(unlist(str_split(ucsc_ref_gene_name[ucsc_ref_gene_name != ""], ";"))),
     cross_listed_genes = sum(sapply(str_split(ucsc_ref_gene_name, ";"), function(x) length(unique(x)) > 1 && length(unique(x)) == length(x))),
     
     genes_list = paste(unique(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]), collapse = ";"),
-    #count_Promotor = sum(str_detect(ucsc_ref_gene_group, "TSS")),
-    #count_Gene_Body = sum(str_detect(ucsc_ref_gene_group, "Body")),
-    #chr_counts = paste(paste0(chr, " (", table(chr), ")"), collapse = "; "),
-    #chr_tss_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))), ")") %>% paste(collapse = "; "),
-    #chr_body_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))), ")") %>% paste(collapse = "; "),
-    #chr_5UTR_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR"))), ")") %>% paste(collapse = "; "),
-    #chr_3UTR_counts = paste0(unique(chr), " (", sapply(unique(chr), function(x) sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))), ")") %>% paste(collapse = "; "),
-    
-    
+    count_Promotor = sum(str_detect(ucsc_ref_gene_group, "TSS")),
+    count_Gene_Body = sum(str_detect(ucsc_ref_gene_group, "Body")),
     chr_cross_listed = paste0(unique(chr), " (", sapply(unique(chr), function(x) paste(
       c(
         if (sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS")) > 0) paste0("TSS: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))),
