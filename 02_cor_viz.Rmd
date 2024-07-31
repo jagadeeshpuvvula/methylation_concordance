@@ -193,7 +193,8 @@ ggtern(data= plot_df,
   stat_density_tern(geom = "polygon", 
                     color = "white",
                     alpha = 0.001) +
-  theme_rgbw()
+  theme_rgbw()+
+  labs(x = "CBMC-FP", y = "CBMC-MP", z = "FP-MP")
 
 ggsave("~/Documents/methyl_concor/result/concor_plt.tiff",
        width = 7.5,height = 7.5,

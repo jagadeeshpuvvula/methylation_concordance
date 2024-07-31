@@ -7,7 +7,7 @@ output: pdf_document
 
 ```{r}
 library(pacman)
-pacman::p_load(tidyverse, reshape2, foreach, doParallel, purrr, data.table, ggtern)
+pacman::p_load(tidyverse, reshape2, foreach, doParallel, purrr, data.table, ggtern, plotly)
 ```
 
 #folder
