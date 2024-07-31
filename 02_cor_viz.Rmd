@@ -177,4 +177,32 @@ cpg_sites_all_levels <- cor_viz %>%
 cpg_sites_list <- paste(cpg_sites_all_levels, collapse = ", ")
 ```
 
+#ternary plot for publication
+```{r}
+plot_df<- cor_viz |>
+  select(c(1,2,4,5,8)) |>
+  pivot_wider(names_from = concord, values_from = cor) |>
+  rename(`CBMC-FP` = cbmc_fp,
+         `CBMC-MP` = cbmc_mp,
+         `FP-MP` = fp_mp)
+
+
+ggtern(data= plot_df,
+       aes(x=`CBMC-FP`, y=`CBMC-MP`, z=`FP-MP`))+
+  geom_point(size=0.001, alpha = 1/15)+
+  stat_density_tern(geom = "polygon", 
+                    color = "white",
+                    alpha = 0.001) +
+  theme_rgbw()
+
+ggsave("~/Documents/methyl_concor/result/concor_plt.tiff",
+       width = 7.5,height = 7.5,
+       dpi=300
+       )
+```
+
+
+
+
+
 
