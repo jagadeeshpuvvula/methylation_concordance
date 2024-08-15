@@ -114,6 +114,28 @@ ggplot(cor_viz, aes(x = factor(concord),
 ```
 
 
+#function for cross-listing issue
+```{r}
+extract_and_sum_after_colon <- function(text) {
+  # Extract the part within parentheses
+  within_parens <- str_extract(text, "\\((.*?)\\)")
+  
+  if (is.na(within_parens)) {
+    return(NA_real_)
+  }
+  
+  # Extract numeric values that follow ": "
+  numbers <- str_extract_all(within_parens, "(?<=:\\s)\\d+")
+  
+  # Convert to numeric and sum
+  numbers <- as.numeric(unlist(numbers))
+  
+  # Return the sum of numeric values
+  return(sum(numbers, na.rm = TRUE))
+}
+```
+
+
 #updated table for manuscript
 ```{r}
 summary <- cor_viz |>
@@ -132,7 +154,7 @@ summary <- cor_viz |>
            cor > 0.6 & cor <= 0.8 ~ "> 0.6 & <= 0.8",
            cor > 0.8 ~ "> 0.8"
          )) |>
-  group_by(concord, p_value_group, cor_group) |>
+  group_by(concord, p_value_group, cor_group, chr) |>
   summarise(
     count_cpg_sites = n(),
     count_genes = n_distinct(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]),
@@ -145,18 +167,51 @@ summary <- cor_viz |>
           if (sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS")) > 0) paste0("TSS: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))),
           if (sum(chr == x & str_detect(ucsc_ref_gene_group, "Body")) > 0) paste0("Body: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))),
           if (sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR")) > 0) paste0("3UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))),
-          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")) > 0) paste0("5UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")))
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")) > 0) paste0("5UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR"))),
+          if (sum(chr == x & ucsc_ref_gene_group == "") > 0) paste0("NA: ", sum(chr == x & ucsc_ref_gene_group == ""))
         ),
         collapse = ", "
       )),
       ")"
-    ) %>% paste(collapse = "; "),
-    cpg_cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3'UTR") + str_detect(ucsc_ref_gene_group, "5'UTR") > 1)
+    ) |>
+      paste(collapse = "; "),
+    cpg_cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3'UTR") + str_detect(ucsc_ref_gene_group, "5'UTR") > 1),
+    numeric_sum = sapply(chr_cross_listed, extract_and_sum_after_colon)
   )
 
 write_csv(summary,
-          file="~/Documents/methyl_concor/result/concordance_summary_jul19.csv")
+          file="~/Documents/methyl_concor/result/concordance_summary_aug14.csv")
 ```
+
+#manual check
+```{r}
+subset<- cor_viz |>
+  filter(
+    concord == "fp_mp",
+    chr == "chr1",
+    p_value < 0.05,
+    cor >= 0.8
+    #cor >= 0.6 & cor < 0.8
+  )
+
+#for manuscript text
+result <- subset %>%
+  separate_rows(ucsc_ref_gene_name, sep = ";") %>%
+  mutate(ucsc_ref_gene_name = str_trim(ucsc_ref_gene_name)) %>%
+  filter(ucsc_ref_gene_name != "") %>%
+  count(ucsc_ref_gene_name) %>%
+  summarise(
+    unique_values = paste(ucsc_ref_gene_name, collapse = ", "),
+    total_count = n()
+  )
+
+x<- summary |>
+  filter(
+    concord == "fp_mp",
+    cor_group == "> 0.8"
+  )
+```
+
 
 #summary for manuscript
 ```{r}
@@ -176,6 +231,30 @@ cpg_sites_all_levels <- cor_viz %>%
 
 cpg_sites_list <- paste(cpg_sites_all_levels, collapse = ", ")
 ```
+
+#manuscript last paragraph
+```{r}
+cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
+  mutate(
+    ucsc_ref_gene_name = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_name), ";"), function(x) paste(unique(x), collapse = "; ")),
+    ucsc_ref_gene_group = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_group), ";"), function(x) paste(unique(x), collapse = "; "))
+  ) |>
+  filter(!is.na(p_value) & p_value != "",  !is.na(cor) & cor != "")  |>
+  filter(p_value < 0.05) |>
+  select(c(1,2,4,5)) |>
+  pivot_wider(
+    names_from = concord,
+    values_from = cor 
+  )
+
+x<- cor_viz |>
+  filter(if_all(c(3,4), ~ . >= 0.85))
+
+#print unique gene names with high correlation
+print(paste(unique(na.omit(x$ucsc_ref_gene_name[x$ucsc_ref_gene_name != ""])), collapse = ", "))
+```
+
+
 
 #ternary plot for publication
 ```{r}
