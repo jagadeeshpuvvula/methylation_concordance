@@ -1,0 +1,126 @@
+---
+title: "03_functional_analysis"
+author: "Puvvula"
+date: "2024-08-26"
+output: pdf_document
+---
+
+#read correlation results
+```{r}
+cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
+  filter(!is.na(p_value) & p_value != "",  !is.na(cor) & cor != "") |>
+  mutate(
+    p_value = as.numeric(p_value),
+    p_value = ifelse(p_value == 0, 1.32e-14, p_value),
+    ucsc_ref_gene_name = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_name), ";"), function(x) paste(unique(x), collapse = "; ")),
+    ucsc_ref_gene_group = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_group), ";"), function(x) paste(unique(x), collapse = "; "))
+  ) |>
+  group_by(concord) |>
+  mutate(q_value = p.adjust(as.numeric(p_value), method = "fdr")) |>
+  ungroup() |>
+  select(c(4,1,5,6,7,8,9,2,3,10))
+```
+
+#finding CpGs significantly correlated by biospecimen pair for functional analysis
+```{r}
+df<- cor_viz |>
+  filter(q_value< 0.05) |>
+  select(c(1,2))
+
+# Get unique levels of the 'concord' variable
+unique_levels <- unique(df$concord)
+
+# Loop through each level and create a dataframe for each
+for (level in unique_levels) {
+  assign(paste0("df_", level), subset(df, concord == level))
+}
+```
+
+#functional analysis
+```{r}
+cbmc_fp_func<- gometh(
+  df_cbmc_fp$cpg_site,
+  collection = c("GO", "KEGG"),
+  array.type = c("450K")
+  )
+
+cbmc_mp_func<- gometh(
+  df_cbmc_mp$cpg_site,
+  collection = c("GO", "KEGG"),
+  array.type = c("450K")
+  )
+
+fp_mp_func<- gometh(
+  df_fp_mp$cpg_site,
+  collection = c("GO", "KEGG"),
+  array.type = c("450K")
+  )
+```
+
+#bind all observations and and export
+```{r}
+# Add row names as a variable in each dataframe
+cbmc_fp_func <- cbmc_fp_func |>
+  rownames_to_column(var = "path_id") |>
+  mutate(source = "cbmc_fp")
+
+cbmc_mp_func <- cbmc_mp_func |>
+  rownames_to_column(var = "path_id") |>
+  mutate(source = "cbmc_mp")
+
+fp_mp_func <- fp_mp_func |>
+  rownames_to_column(var = "path_id") |>
+  mutate(source = "fp_mp")
+
+functional_df<- rbind(cbmc_fp_func, cbmc_mp_func, fp_mp_func)
+
+write_csv(functional_df, "~/Documents/methyl_concor/result/functional_analysis.csv")
+```
+
+#visualization
+```{r}
+functional_df<- read_csv("~/Documents/methyl_concor/result/functional_analysis.csv")
+
+viz_df<- functional_df |>
+  clean_names()|>
+  filter(fdr<0.05)|>
+  mutate(ontology = recode(ontology,
+                            "BP" = "biological process",
+                            "CC" = "cellular component",
+                            "MF" = "molecular function"))
+```
+
+#https://www.bioconductor.org/packages/devel/bioc/vignettes/rrvgo/inst/doc/rrvgo.html
+```{r}
+x<- viz_df |>
+  filter(ontology == "biological process")
+
+simMatrix <- calculateSimMatrix(x$path_id,
+                                orgdb="org.Hs.eg.db",
+                                ont=c("BP"),
+                                method="Rel")
+
+scores <- setNames(-log10(x$fdr), x$path_id)
+
+reducedTerms <- reduceSimMatrix(simMatrix,
+                                scores,
+                                threshold=0.7,
+                                orgdb="org.Hs.eg.db")
+
+reducedTerms <- reducedTerms |> 
+  mutate(parentTerm = str_to_title(parentTerm) |> factor())
+
+heatmapPlot(simMatrix,
+            reducedTerms,
+            annotateParent=T,
+            annotationLabel="parentTerm",
+            clustering_distance_rows = "correlation",
+            fontsize=6.5,
+            show_colnames= F,
+            show_rownames= F,
+            cutree_rows = 10,
+            cutree_cols = 10,
+            drop_levels = T)
+```
+
+

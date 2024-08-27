@@ -8,111 +8,125 @@ output: pdf_document
 #formatting
 ```{r}
 cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
+  filter(!is.na(p_value) & p_value != "",  !is.na(cor) & cor != "") |>
   mutate(
+    p_value = as.numeric(p_value),
+    p_value = ifelse(p_value == 0, 1.32e-14, p_value),
     ucsc_ref_gene_name = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_name), ";"), function(x) paste(unique(x), collapse = "; ")),
     ucsc_ref_gene_group = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_group), ";"), function(x) paste(unique(x), collapse = "; "))
   ) |>
-  filter(!is.na(p_value) & p_value != "",  !is.na(cor) & cor != "") 
+  group_by(concord) |>
+  mutate(q_value = p.adjust(as.numeric(p_value), method = "fdr")) |>
+  ungroup() |>
+  select(c(4,1,5,6,7,8,9,2,3,10))
 
 
-|>
-  filter(!is.na(ucsc_ref_gene_name) & ucsc_ref_gene_name != "") |>
-  filter(cor < -0.75 | cor > 0.75, as.numeric(p_value) < 0.05) |>
-  filter(str_detect(ucsc_ref_gene_group, "TSS"))
+# Ensure the 'chr' variable is in the correct order
+chr_levels <- paste0("chr", 1:22) # Add more levels if needed, e.g., for chrX, chrY
+
+#Unique gene group values
+#unique(unlist(strsplit(gsub("[0-9]", "", cor_viz$ucsc_ref_gene_group), "; ")))
 ```
 
-#export full results for supplement table
+#density plot of p and q values - for check
 ```{r}
-write.table(cor_viz, "~/Documents/methyl_concor/result/methylation_suppl.txt", 
+x<-cor_viz |>
+  select(c(1,9,10)) |>
+  pivot_longer(cols = c(p_value, q_value), names_to = "variable", values_to = "value")
+
+ggplot(x, aes(x = value, color = variable)) +
+  geom_density(alpha = 0.5) +
+  labs(title = " ",
+       x = "Value",
+       y = "Density",
+       color = "Variable") +
+  theme_minimal()+
+  theme(
+    legend.position = "bottom",
+    legend.box = "horizontal",
+    legend.key = element_rect(fill = "white", color = "black"),
+    legend.background = element_blank()
+  )+
+  facet_wrap(~ concord, scales = "free")
+```
+
+
+#export full results for - Appendix
+```{r}
+write.table(cor_viz, "~/Documents/methyl_concor/result/methylation_suppl_with_q.txt", 
             sep = "\t", row.names = FALSE, quote = FALSE)
 ```
 
-
-#formatting for summary table
+#visualizing result - Figure 1 
 ```{r}
-# Ensure the 'chr' variable is in the correct order
-chr_levels <- paste0("chr", 1:22) # Add more levels if needed, e.g., for chrX, chrY
-```
-
-
-#summary table
-```{r}
-summary <- cor_viz |>
-  filter(p_value < 0.05) |>
-  mutate(p_value_group = ifelse(p_value < 0.05 , "< 0.05", "> 0.05"),
-         cor_group = case_when(
-           cor <= -0.8 ~ "<= -0.8",
-           cor > -0.8 & cor <= -0.6 ~ "> -0.8 & <= -0.6",
-           cor > -0.6 & cor <= -0.4 ~ "> -0.6 & <= -0.4",
-           cor > -0.4 & cor <= -0.2 ~ "> -0.4 & <= -0.2",
-           cor > -0.2 & cor < 0 ~ "> -0.2 & < 0",
+summary_data <- cor_viz |>
+  mutate(cor_group = case_when(
+           cor <= -0.75 ~ "<= -0.75",
+           cor > -0.75 & cor <= -0.5 ~ "> -0.75 & <= -0.5",
+           cor > -0.5 & cor <= -0.25 ~ "> -0.5 & <= -0.25",
+           cor > -0.25 & cor < 0 ~ "> -0.25 & < 0",
            cor == 0 ~ "0",
-           cor > 0 & cor <= 0.2 ~ "> 0 & <= 0.2",
-           cor > 0.2 & cor <= 0.4 ~ "> 0.2 & <= 0.4",
-           cor > 0.4 & cor <= 0.6 ~ "> 0.4 & <= 0.6",
-           cor > 0.6 & cor <= 0.8 ~ "> 0.6 & <= 0.8",
-           cor > 0.8 ~ "> 0.8"
-         )) |>
-  group_by(concord, p_value_group, cor_group, chr) |>
-  summarise(
-    count_cpg_sites = n(),
-    count_genes = n_distinct(unlist(str_split(ucsc_ref_gene_name[ucsc_ref_gene_name != ""], ";"))),
-    cross_listed_genes = sum(sapply(str_split(ucsc_ref_gene_name, ";"), function(x) length(unique(x)) > 1 && length(unique(x)) == length(x))),
-    
-    genes_list = paste(unique(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]), collapse = ";"),
-    count_Promotor = sum(str_detect(ucsc_ref_gene_group, "TSS")),
-    count_Gene_Body = sum(str_detect(ucsc_ref_gene_group, "Body")),
-    chr_cross_listed = paste0(unique(chr), " (", sapply(unique(chr), function(x) paste(
-      c(
-        if (sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS")) > 0) paste0("TSS: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))),
-        if (sum(chr == x & str_detect(ucsc_ref_gene_group, "Body")) > 0) paste0("Body: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))),
-        if (sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR")) > 0) paste0("3UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))),
-        if (sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")) > 0) paste0("5UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")))
-      ),
-      collapse = ", "
-    )), ")") %>% paste(collapse = "; "),
-    
-    
-    cpg_cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3'UTR") + str_detect(ucsc_ref_gene_group, "5'UTR") > 1)
+           cor > 0 & cor <= 0.25 ~ "> 0 & <= 0.25",
+           cor > 0.25 & cor <= 0.5 ~ "> 0.25 & <= 0.5",
+           cor > 0.5 & cor <= 0.75 ~ "> 0.5 & <= 0.75",
+           cor > 0.75 ~ "> 0.75"
+         ),
+         concord = factor(
+    case_when(
+      concord == "cbmc_fp" ~ "CBMC-FP",
+      concord == "cbmc_mp" ~ "CBMC-MP",
+      concord == "fp_mp" ~ "FP-MP",
+      TRUE ~ as.character(concord)  # Keep other levels unchanged
+    ),
+    levels = c("CBMC-FP", "CBMC-MP", "FP-MP")  # Define the levels in the desired order
+  )) |>
+  group_by(concord, cor_group, ucsc_ref_gene_group, chr) |>
+  summarise(count = sum(q_value < 0.05)) |>
+  mutate(ucsc_ref_gene_group = sapply(strsplit(as.character(ucsc_ref_gene_group), "; "), function(parts) {
+    # Check if any part contains "TSS"
+    if (any(grepl("TSS", parts))) {
+      "TSS"
+    } else if (length(parts) > 1) {
+      # If more than one part and none contains "TSS", label as "cross listed"
+      "Cross listed"
+    } else {
+      # Otherwise, return the original value
+      parts[1]
+    }
+  }),
+  ) |>
+  filter(
+    cor_group == "> 0.75" |
+    cor_group == "> 0.5 & <= 0.75" |
+    cor_group == "> -0.75 & <= -0.5" 
   )
 
-write_csv(summary,
-          file="~/Documents/methyl_concor/result/concordance_summary.csv")
-```
-
-
-#scatter plot
-```{r}
-ggplot(cor_viz,
-       aes(x = p_value, y= cor))+
-  geom_point()+
+ggplot(summary_data, aes(x = cor_group, fill = ucsc_ref_gene_group, y = count)) +
+  geom_bar(stat = "identity") +
+  scale_colour_viridis_d(option = "B")+
+  labs(title = " ",
+       x = "Spearman correlation coefficient",
+       y = "Count of CpGs (q-value<0.05)") +
   theme_minimal()+
-  facet_grid(~concord)
-```
+  facet_grid(concord ~ factor(chr, levels = chr_levels), scales = "free_y", switch = "both")+
+  #facet_wrap(~ concord, scales = "free", ncol=1)+
+  labs(fill = "UCSC reference gene group") +
+  guides(fill = guide_legend(nrow = 1, byrow = TRUE))+
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        strip.placement = "outside",
+        axis.title = element_text(color = "black", size = 11),
+        axis.text = element_text(color = "black", size = 11),
+        strip.text = element_text(color = "black", size = 11),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank())
 
-#correlation heatmap - subset
-```{r}
-ggplot(cor_viz, aes(x = factor(concord), 
-                    y = cpg_site, fill = cor)) + #, label = value
-  geom_tile(color = "white") +
-  #geom_text(color = "black", size = 3, vjust = 1) +
-  scale_fill_gradient2(low = "red", high = "royalblue", mid = "white",
-                       midpoint = 0,
-                       limit = c(-1, 1), space = "Lab",
-                       name = "Spearman Correlation coefficient") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, vjust = 1, size = 11, hjust = 1),
-        axis.text.y = element_blank(),
-        axis.title.x = element_blank(),
-        axis.title.y = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.ticks = element_blank(),
-        legend.position = "bottom", legend.box = "horizontal") +
-  facet_grid(.~chr)
+ggsave("~/Documents/methyl_concor/result/correlation_summary.tiff",
+       width = 12.5,height = 6.5,
+       dpi=300,
+       bg="white"
+       )
 ```
-
 
 #function for cross-listing issue
 ```{r}
@@ -135,26 +149,76 @@ extract_and_sum_after_colon <- function(text) {
 }
 ```
 
-
-#updated table for manuscript
+#updated table for manuscript - Supplement table 1
 ```{r}
 summary <- cor_viz |>
-  filter(p_value < 0.05) |>
+  #filter(p_value < 0.05) |>
+  filter(q_value < 0.05 
+         & cor > 0.85
+         )|>
   mutate(p_value_group = ifelse(p_value < 0.05 , "< 0.05", "> 0.05"),
+         q_value_group = ifelse(q_value < 0.05 , "< 0.05", "> 0.05"),
          cor_group = case_when(
-           cor <= -0.8 ~ "<= -0.8",
-           cor > -0.8 & cor <= -0.6 ~ "> -0.8 & <= -0.6",
-           cor > -0.6 & cor <= -0.4 ~ "> -0.6 & <= -0.4",
-           cor > -0.4 & cor <= -0.2 ~ "> -0.4 & <= -0.2",
-           cor > -0.2 & cor < 0 ~ "> -0.2 & < 0",
+           cor <= -0.75 ~ "<= -0.75",
+           cor > -0.75 & cor <= -0.5 ~ "> -0.75 & <= -0.5",
+           cor > -0.5 & cor <= -0.25 ~ "> -0.5 & <= -0.25",
+           cor > -0.25 & cor < 0 ~ "> -0.25 & < 0",
            cor == 0 ~ "0",
-           cor > 0 & cor <= 0.2 ~ "> 0 & <= 0.2",
-           cor > 0.2 & cor <= 0.4 ~ "> 0.2 & <= 0.4",
-           cor > 0.4 & cor <= 0.6 ~ "> 0.4 & <= 0.6",
-           cor > 0.6 & cor <= 0.8 ~ "> 0.6 & <= 0.8",
-           cor > 0.8 ~ "> 0.8"
+           cor > 0 & cor <= 0.25 ~ "> 0 & <= 0.25",
+           cor > 0.25 & cor <= 0.5 ~ "> 0.25 & <= 0.5",
+           cor > 0.5 & cor <= 0.75 ~ "> 0.5 & <= 0.75",
+           cor > 0.75 ~ "> 0.75"
          )) |>
-  group_by(concord, p_value_group, cor_group, chr) |>
+  group_by(concord, q_value_group, cor_group, chr) |>
+  summarise(
+    count_cpg_sites = n(),
+    count_genes = n_distinct(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]),
+    gene_names = paste(unique(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]), collapse = ", "),
+    cross_listed_genes = sum(sapply(str_split(ucsc_ref_gene_name, ";"), function(x) length(unique(x)) > 1 && length(unique(x)) == length(x))),
+    chr_cross_listed = paste0(
+      unique(chr) %>% factor(levels = chr_levels) %>% sort() %>% as.character(),
+      " (",
+      sapply(unique(chr) %>% factor(levels = chr_levels) %>% sort() %>% as.character(), function(x) paste(
+        c(
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS")) > 0) paste0("TSS: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "TSS"))),
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "Body")) > 0) paste0("Body: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))),
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR")) > 0) paste0("3UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))),
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")) > 0) paste0("5UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR"))),
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "Exon")) > 0) paste0("Exon: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "Exon"))),
+          if (sum(chr == x & ucsc_ref_gene_group == "") > 0) paste0("NA: ", sum(chr == x & ucsc_ref_gene_group == ""))
+        ),
+        collapse = ", "
+      )),
+      ")"
+    ) |>
+      paste(collapse = "; "),
+    cpg_cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3'UTR") + str_detect(ucsc_ref_gene_group, "5'UTR") > 1),
+    numeric_sum = sapply(chr_cross_listed, extract_and_sum_after_colon)
+  )
+
+write_csv(summary,
+          file="~/Documents/methyl_concor/result/concordance_summary_with_q.csv")
+```
+
+#for manuscript text
+```{r}
+summary_txt <- cor_viz |>
+  #filter(p_value < 0.05) |>
+  filter(q_value < 0.05)|>
+  mutate(p_value_group = ifelse(p_value < 0.05 , "< 0.05", "> 0.05"),
+         q_value_group = ifelse(q_value < 0.05 , "< 0.05", "> 0.05"),
+         cor_group = case_when(
+           cor <= -0.75 ~ "<= -0.75",
+           cor > -0.75 & cor <= -0.5 ~ "> -0.75 & <= -0.5",
+           cor > -0.5 & cor <= -0.25 ~ "> -0.5 & <= -0.25",
+           cor > -0.25 & cor < 0 ~ "> -0.25 & < 0",
+           cor == 0 ~ "0",
+           cor > 0 & cor <= 0.25 ~ "> 0 & <= 0.25",
+           cor > 0.25 & cor <= 0.5 ~ "> 0.25 & <= 0.5",
+           cor > 0.5 & cor <= 0.75 ~ "> 0.5 & <= 0.75",
+           cor > 0.75 ~ "> 0.75"
+         )) |>
+  group_by(concord, q_value_group, cor_group, chr) |>
   summarise(
     count_cpg_sites = n(),
     count_genes = n_distinct(ucsc_ref_gene_name[ucsc_ref_gene_name != ""]),
@@ -168,6 +232,7 @@ summary <- cor_viz |>
           if (sum(chr == x & str_detect(ucsc_ref_gene_group, "Body")) > 0) paste0("Body: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "Body"))),
           if (sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR")) > 0) paste0("3UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "3'UTR"))),
           if (sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR")) > 0) paste0("5UTR: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "5'UTR"))),
+          if (sum(chr == x & str_detect(ucsc_ref_gene_group, "Exon")) > 0) paste0("Exon: ", sum(chr == x & str_detect(ucsc_ref_gene_group, "Exon"))),
           if (sum(chr == x & ucsc_ref_gene_group == "") > 0) paste0("NA: ", sum(chr == x & ucsc_ref_gene_group == ""))
         ),
         collapse = ", "
@@ -178,19 +243,19 @@ summary <- cor_viz |>
     cpg_cross_listed_regions = sum(str_detect(ucsc_ref_gene_group, "TSS") + str_detect(ucsc_ref_gene_group, "Body") + str_detect(ucsc_ref_gene_group, "3'UTR") + str_detect(ucsc_ref_gene_group, "5'UTR") > 1),
     numeric_sum = sapply(chr_cross_listed, extract_and_sum_after_colon)
   )
-
-write_csv(summary,
-          file="~/Documents/methyl_concor/result/concordance_summary_aug14.csv")
 ```
+
+	
 
 #manual check
 ```{r}
 subset<- cor_viz |>
   filter(
-    concord == "fp_mp",
-    chr == "chr1",
-    p_value < 0.05,
-    cor >= 0.8
+    concord == "cbmc_fp",
+    chr == "chr3",
+    q_value < 0.05,
+    #cor >= -0.5
+    cor > -0.5 & cor <= -0.25 
     #cor >= 0.6 & cor < 0.8
   )
 
@@ -213,35 +278,21 @@ x<- summary |>
 ```
 
 
-#summary for manuscript
+#summary for manuscript -Supplement table 2
 ```{r}
-cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
-  mutate(
-    ucsc_ref_gene_name = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_name), ";"), function(x) paste(unique(x), collapse = "; ")),
-    ucsc_ref_gene_group = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_group), ";"), function(x) paste(unique(x), collapse = "; "))
-  ) |>
-  filter(!is.na(p_value) & p_value != "",  !is.na(cor) & cor != "")  |>
-  filter(p_value < 0.05 & cor >0.5)
-
-cpg_sites_all_levels <- cor_viz %>%
-  group_by(cpg_site) %>%
-  summarise(levels_present = n_distinct(concord)) %>%
+cpg_sites_all_levels <- cor_viz_df %>%
+  group_by(ucsc_ref_gene_name, chr, cpg_site) %>%
+  summarise(levels_present = n_distinct(concord), .groups = 'drop') %>%
   filter(levels_present == 3) %>%
-  pull(cpg_site)
-
-cpg_sites_list <- paste(cpg_sites_all_levels, collapse = ", ")
+  group_by(ucsc_ref_gene_name, chr) %>%
+  summarise(cpg_sites = paste(unique(cpg_site), collapse = ", "))
 ```
 
 #manuscript last paragraph
 ```{r}
-cor_viz<- readRDS("~/Documents/methyl_concor/result/methyl_conc_results.rds") |>
-  mutate(
-    ucsc_ref_gene_name = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_name), ";"), function(x) paste(unique(x), collapse = "; ")),
-    ucsc_ref_gene_group = sapply(strsplit(gsub("\\s+", "", ucsc_ref_gene_group), ";"), function(x) paste(unique(x), collapse = "; "))
-  ) |>
-  filter(!is.na(p_value) & p_value != "",  !is.na(cor) & cor != "")  |>
-  filter(p_value < 0.05) |>
-  select(c(1,2,4,5)) |>
+cor_viz_txt<- cor_viz  |>
+  filter(q_value < 0.05) |>
+  select(c(1,3,8)) |>
   pivot_wider(
     names_from = concord,
     values_from = cor 
@@ -282,6 +333,59 @@ ggsave("~/Documents/methyl_concor/result/concor_plt.tiff",
 ```
 
 
+#additional figures from original data
+```{r}
+load(paste0(input, "/methylation.Rds"))
+
+#12 CpGs with high correlation
+cpg_sites <- c("cg15071166", "cg00864916", "cg08923669", "cg04842962", 
+               "cg26022684", "cg26654770", "cg02622647", "cg10070864", 
+               "cg13473803", "cg15969227", "cg22337407", "cg25602718")
+
+filtered_methylation <- all_methylation |>
+  filter(cpg_site %in% cpg_sites) |>
+  select(-c(4)) |>
+  mutate(gene_name = case_when(
+    cpg_site == "cg15071166" ~ "CAMMK1",
+    cpg_site == "cg00864916" ~ "KIAA1614",
+    cpg_site == "cg08923669" ~ "MRPL28",
+    cpg_site == "cg04842962" ~ "MRPS18A",
+    cpg_site == "cg26022684" ~ "NBPF1",
+    cpg_site == "cg26654770" ~ "NINJ2",
+    cpg_site %in% c("cg02622647", "cg10070864", "cg13473803", 
+                    "cg15969227", "cg22337407", "cg25602718") ~ "Not Annotated",
+    TRUE ~ NA_character_  # Keep other rows as NA if no match
+  ),
+  smpl = str_to_upper(smpl),
+  methylation_intensity = scales::rescale(methylation_intensity, to = c(0, 1))
+  )
+
+#heatmap
+ggplot(filtered_methylation, aes(x = smpl, y = participant_id, fill = methylation_intensity)) +
+  geom_tile(width = 1, height = 1) +
+  scale_fill_viridis_c(option = "D", limits = c(0, 1),
+                       labels = scales::label_number(accuracy = 0.1)) +  
+  labs(x = "CpG Site", y = "Study participants", fill = "Methylation β") +
+  theme_void() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  facet_grid(.~factor(cpg_site, levels = cpg_sites)+gene_name, 
+             switch = "x")+
+  theme(
+    axis.text.y = element_blank(),  
+    axis.title.y = element_blank(), 
+    legend.position = "bottom",      
+    legend.box = "horizontal",
+    strip.text.x = element_text(size = 11, color = "black", angle = 0),
+    strip.placement = "outside",
+    legend.title = element_text(margin = margin(b = 12))
+  )
+
+ggsave("~/Documents/methyl_concor/result/methylation_beta_cpg_subset.tiff",
+       width = 14,height = 6,
+       dpi=300,
+       bg="white"
+       )
+```
 
 
 
