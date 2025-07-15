@@ -1,1 +1,1 @@
-# methylation_concordance
+### Puvvula J, Braun JM, DeFranco EA, Ho SM, Leung YK, Huang S, Zhang X, Vuong AM, Kim SS, Percy Z, Chen A. Epigenetic signatures of maternal-fetal health: insights from cord blood and placenta. Epigenetics. 2025 Dec;20(1):2508067. doi: 10.1080/15592294.2025.2508067. Epub 2025 May 23. PMID: 40405669; PMCID: PMC12118431.
